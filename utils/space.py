@@ -4,32 +4,25 @@ from tqdm import tqdm, trange
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
-# class RDWFramework:
-#     def __init__(self, physical_width, physical_height, user_x, user_y, user_direction):
-#         self.physical_space = PhysicalSpace(physical_width, physical_height, user_x, user_y, user_direction)
-#         self.virtual_space = VirtualSpace()
-#         self.reset_num = 0
-
 class UserInfo:
     """
-    The representation of the user (position, direction, velocity and angular velocity).
+    The representation of the user (position, angle, velocity and angular velocity).
     """
-    def __init__(self, x, y, direction, v, w):
+    def __init__(self, x, y, angle, v, w):
         self.x = x
         self.y = y
-        self.direction = direction
+        self.angle = angle
         self.v = v
         self.w = w
 
 class Space:
     """
     The representation of the physical space.
-    We consider it as a rectangle from (0,0) to (width, height) with polygonal obstacles obstacle_list.
-    Additionally, we record the position of the user (user_x, user_y), its direction (user_direction) and velocity (user_v) and angular velocity (user_w).
+    We consider it as a polygon space with polygonal obstacles obstacle_list.
+    Additionally, we record the position of the user (user_x, user_y), its angle (user_angle) and velocity (user_v) and angular velocity (user_w).
     """
-    def __init__(self, width, height, raw_obstacle_list):
-        self.width = width
-        self.height = height
+    def __init__(self, border, raw_obstacle_list):
+        self.border= [(t['x'],t['y']) for t in border]
         self.obstacle_list = []
         for raw_obstacle in raw_obstacle_list:
             obstacle = [(t['x'],t['y']) for t in raw_obstacle]
@@ -39,7 +32,7 @@ class Space:
         self.obstacle_list.append(obstacle)
 
     def in_obstacle(self, x, y):
-        if x <= 0 or x >= self.width or y <= 0 or y >= self.height:
+        if not Polygon(self.border).contains(Point(x,y)):
             return True
         for obstacle in self.obstacle_list:
             polygon = Polygon(obstacle)

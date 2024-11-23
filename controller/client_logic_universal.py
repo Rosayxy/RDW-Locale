@@ -17,5 +17,5 @@ def update_user(user, physical_space, delta):
 
 def update_reset(user, physical_space, delta):
     # implenent reset logic
-    user.direction = ( user.direction + math.pi ) % (2 * math.pi)
+    user.angle = ( user.angle + math.pi ) % (2 * math.pi)
     return user

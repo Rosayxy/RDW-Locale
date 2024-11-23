@@ -4,7 +4,7 @@ import math
 def calc_move_with_gain(user, trans_gain, rot_gain, cur_gain_r, cur_direction, delta):
     x = user.x
     y = user.y
-    dir = user.direction
+    dir = user.angle
     d_s = user.v
     d_dir = user.w
 
