@@ -1,0 +1,5 @@
+*__pycache__*
+*test*
+.vscode
+.env
+EasyRDW.md
