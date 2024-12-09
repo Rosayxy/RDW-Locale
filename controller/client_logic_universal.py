@@ -2,10 +2,8 @@ from utils.constants import *
 from utils.space import *
 import math
 from utils.misc import calc_move_with_gain
+from client_logic import calc_gain,update_reset
 
-
-def calc_gain(user, physical_space, delta):
-    return MIN_TRANS_GAIN, MIN_ROT_GAIN, MIN_CUR_GAIN_R, 1
 
 def update_user(user : UserInfo, physical_space : Space, delta : float):
     """
@@ -17,6 +15,3 @@ def update_user(user : UserInfo, physical_space : Space, delta : float):
         return update_reset(user, physical_space, delta), True
     return new_user, False
 
-def update_reset(user, physical_space, delta):
-    user.angle = ( user.angle + math.pi ) % (2 * math.pi)
-    return user
