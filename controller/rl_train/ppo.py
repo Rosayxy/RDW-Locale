@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal
+from torch.nn.functional import mse_loss
+import numpy as np
 
 
 DELTA_T=0.02 # 50 fps
@@ -42,14 +44,15 @@ class PPO:
         # 对第2维(曲率增益)
         action[...,2] = ((torch.tanh(raw_action[...,2]) + 1)/2)*(INF_CUR_GAIN_R - MIN_CUR_GAIN_R) + MIN_CUR_GAIN_R
 
-        return action, log_prob, value
+
+        return action, log_prob, value, raw_action
     
-    def evaluate_actions(self, states, actions):
+    def evaluate_actions(self, states, raw_actions):
         mean, log_std, values = self.net(states)
         std = torch.exp(log_std)
         dist = Normal(mean, std)
         
-        log_probs = dist.log_prob(actions).sum(axis=-1)
+        log_probs = dist.log_prob(raw_actions).sum(axis=-1)
         entropy = dist.entropy().sum(axis=-1)
         
         return log_probs, values, entropy
@@ -57,8 +60,8 @@ class PPO:
     def update(self, rollout):
         # rollout 包含：states, actions, old_log_probs, returns, advantages
         
-        states = torch.tensor(rollout['states'], dtype=torch.float32)
-        actions = torch.tensor(rollout['actions'], dtype=torch.float32)
+        states = torch.from_numpy(np.array(rollout['states'], dtype=np.float32))
+        raw_actions = torch.from_numpy(np.array(rollout['raw_actions'], dtype=np.float32))
         old_log_probs = torch.tensor(rollout['log_probs'], dtype=torch.float32)
         returns = torch.tensor(rollout['returns'], dtype=torch.float32)
         advantages = torch.tensor(rollout['advantages'], dtype=torch.float32)
@@ -68,7 +71,7 @@ class PPO:
         K = 10
         batch_size = len(states)
         for _ in range(K):
-            log_probs, values, entropy = self.evaluate_actions(states, actions)
+            log_probs, values, entropy = self.evaluate_actions(states,  raw_actions)
             
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantages
