@@ -53,12 +53,12 @@ async def user_loop(websocket, path):
         data = await websocket.recv()
         data = json.loads(data)
         print(data)
-        if data["type"] == "start":
-            physical_space = Space(data["physical"]["border"], data["physical"]["obstacle_list"])
+        if data["type"] == "start": # update this
+            physical_space = Space(data["physical"]["border"], data["physical"]["obstacle_list"],data['virtual']['border'],data['virtual']['obstacle_list'])
             message = json.dumps({"type": "start"})
             await websocket.send(message)
         elif data["type"] == "running":
-            user = UserInfo(data["physical"]["user_x"], data["physical"]["user_y"], data["physical"]["user_direction"], data["user_v"], data["user_w"])
+            user = UserInfo(data["physical"]["user_x"], data["physical"]["user_y"], data["physical"]["user_direction"], data["user_v"], data["user_w"],data["virtual"]["user_x"],data["virtual"]["user_y"],data["virtual"]["user_direction"])
             delta_t = data["delta_t"]
             need_reset = data["need_reset"]
             if need_reset:
