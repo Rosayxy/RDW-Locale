@@ -3,3 +3,4 @@
 .vscode
 .env
 EasyRDW.md
+*.json
