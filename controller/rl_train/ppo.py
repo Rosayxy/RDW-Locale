@@ -15,16 +15,18 @@ MIN_CUR_GAIN_R=750 # cm!
 INF_CUR_GAIN_R=2500000 # cm!
 
 class PPO:
-    def __init__(self, policy_value_net, lr=3e-4, gamma=0.99, lam=0.95, clip_range=0.1, ent_coef=0.001):
-        self.net = policy_value_net
+    def __init__(self, policy_value_net, lr=3e-4, gamma=0.99, lam=0.95, clip_range=0.1, ent_coef=0.001, device='cpu'):
+        self.net = policy_value_net.to(device)
         self.optimizer = optim.Adam(self.net.parameters(), lr=lr)
         
         self.gamma = gamma
         self.lam = lam
         self.clip_range = clip_range
         self.ent_coef = ent_coef
+        self.device = device
         
     def get_action(self, state):
+        state = state.to(self.device)
         with torch.no_grad():
             mean, log_std, value = self.net(state)
             std = torch.exp(log_std)
@@ -45,7 +47,7 @@ class PPO:
         action[...,2] = ((torch.tanh(raw_action[...,2]) + 1)/2)*(INF_CUR_GAIN_R - MIN_CUR_GAIN_R) + MIN_CUR_GAIN_R
 
 
-        return action, log_prob, value, raw_action
+        return action.cpu(), log_prob, value,raw_action
     
     def evaluate_actions(self, states, raw_actions):
         mean, log_std, values = self.net(states)
@@ -60,29 +62,42 @@ class PPO:
     def update(self, rollout):
         # rollout 包含：states, actions, old_log_probs, returns, advantages
         
-        states = torch.from_numpy(np.array(rollout['states'], dtype=np.float32))
-        raw_actions = torch.from_numpy(np.array(rollout['raw_actions'], dtype=np.float32))
-        old_log_probs = torch.tensor(rollout['log_probs'], dtype=torch.float32)
-        returns = torch.tensor(rollout['returns'], dtype=torch.float32)
-        advantages = torch.tensor(rollout['advantages'], dtype=torch.float32)
+        states = rollout['states']
+        raw_actions = rollout['raw_actions']
+        old_log_probs = rollout['log_probs']
+        returns = rollout['returns']
+        advantages = rollout['advantages']
         
         # PPO更新，一般会进行多次优化迭代
         # 假设进行K次更新
         K = 10
         batch_size = len(states)
+        mini_batch_size = 2560  # 可根据数据量与GPU性能调整
+        
         for _ in range(K):
-            log_probs, values, entropy = self.evaluate_actions(states,  raw_actions)
-            
-            ratio = torch.exp(log_probs - old_log_probs)
-            surr1 = ratio * advantages
-            surr2 = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range) * advantages
-            
-            actor_loss = -torch.min(surr1, surr2).mean()
-            critic_loss = (returns - values).pow(2).mean()
-            entropy_loss = -entropy.mean()
-            
-            loss = actor_loss + 0.5 * critic_loss + self.ent_coef * entropy_loss
-            
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            indices = np.arange(batch_size)
+            np.random.shuffle(indices)
+            for start in range(0, batch_size, mini_batch_size):
+                end = start + mini_batch_size
+                mb_idx = indices[start:end]
+                
+                mb_states = states[mb_idx]
+                mb_raw_actions = raw_actions[mb_idx]
+                mb_old_log_probs = old_log_probs[mb_idx]
+                mb_returns = returns[mb_idx]
+                mb_advantages = advantages[mb_idx]
+                
+                log_probs, values, entropy = self.evaluate_actions(mb_states, mb_raw_actions)
+                
+                ratio = torch.exp(log_probs - mb_old_log_probs)
+                surr1 = ratio * mb_advantages
+                surr2 = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range) * mb_advantages
+                values = values.squeeze()
+                actor_loss = -torch.min(surr1, surr2).mean()
+                critic_loss = (mb_returns - values).pow(2).mean()
+                entropy_loss = -entropy.mean()
+                loss = actor_loss + 0.5 * critic_loss + self.ent_coef * entropy_loss
+                
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()

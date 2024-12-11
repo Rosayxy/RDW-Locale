@@ -4,3 +4,5 @@
 .env
 EasyRDW.md
 *.json
+*.pth
+*.png
