@@ -86,62 +86,48 @@ def is_out_of_boundary(pos, boundary_polygon):
 
 def generate_path(boundary_virt_polygon,
                   num_paths=10,
-                  speed=1.4,       # 行走速度: 1.4m/s
-                  freq=60,         # 频率: 60Hz
+                  speed=1.4,
+                  freq=60,
                   min_turn_dist=0.5,
                   max_turn_dist=3.5,
                   turn_angle_std=math.pi/4,
                   min_radius=2.0,
                   max_radius=4.0,
                   output_file="paths.json"):
-    """
-    根据描述生成模拟路径数据并保存为JSON文件。
-    每条数据格式：
-    {
-        "target": {"x":..., "y":...},
-        "path": [
-            {"x":..., "y":..., "dir": ...},
-            ...
-        ]
-    }
-    """
-    # 首先获取边界的包围盒，方便随机取点
-    minx, miny, maxx, maxy = boundary_virt_polygon.bounds
 
+    minx, miny, maxx, maxy = boundary_virt_polygon.bounds
     dt = 1.0/freq
     results = []
 
-    for i in tqdm.tqdm(range(num_paths)):
+    for i in range(num_paths):
         # 1. 随机选取目标点(虚拟空间中)
         target_x, target_y = point_in_polygon(boundary_virt_polygon, minx, maxx, miny, maxy)
 
         # 2. 从目标点出发，随机初始方向(0~2π)
-        direction = random.uniform(0, 2*math.pi)
+        direction = random.uniform(0, 2*math.pi) % (2*math.pi)
         current_pos = (target_x, target_y)
 
-        # 3. 模拟向外行走，直到出界
+        # 3. 模拟行走
         path_with_dir = []
         path_with_dir.append({"x": current_pos[0], "y": current_pos[1], "dir": direction})
         
         distance_to_next_turn = random.uniform(min_turn_dist, max_turn_dist)
         dist_since_last_turn = 0.0
 
-        # 行走直到出界
         turning = False
         turn_steps = 0
         turn_step_count = 0
         angle_increment = 0.0
 
         while True:
-            # 如果出界则停止
             if is_out_of_boundary(current_pos, boundary_virt_polygon):
                 break
 
-            # 行进一步
             step_dist = speed * dt
-            # 如果正在转向，则调整方向
             if turning:
                 direction += angle_increment
+                # 确保方向在[0, 2π)内
+                direction %= (2*math.pi)
                 turn_step_count += 1
                 if turn_step_count >= turn_steps:
                     turning = False
@@ -156,32 +142,40 @@ def generate_path(boundary_virt_polygon,
 
             # 检查是否需要转向
             if not turning and dist_since_last_turn > distance_to_next_turn:
-                # 产生新的转向
                 angle_change = random.gauss(0, turn_angle_std)
                 if angle_change != 0:
                     radius = random.uniform(min_radius, max_radius)
                     total_time = abs(angle_change) * radius / speed
                     turn_steps = max(1, int(total_time / dt))
-                    angle_increment = (angle_change / turn_steps)
+                    angle_increment = angle_change / turn_steps
                     turning = True
                     turn_step_count = 0
 
-                # 重置距离计数和下一次转向距离
                 dist_since_last_turn = 0.0
                 distance_to_next_turn = random.uniform(min_turn_dist, max_turn_dist)
 
-        # 反转路径
+        # 路径反转
         reversed_path = list(reversed(path_with_dir))
 
-        # 保存数据
+        # 对反转后的路径重新计算方向：
+        # 原始方向是正向行走的，此时需根据相邻点的差重新计算
+        # reversed_path[i]["dir"]基于 reversed_path[i-1] -> reversed_path[i]向量来计算
+        for idx in range(1, len(reversed_path)):
+            dx = reversed_path[idx]["x"] - reversed_path[idx-1]["x"]
+            dy = reversed_path[idx]["y"] - reversed_path[idx-1]["y"]
+            new_dir = math.atan2(dy, dx) % (2*math.pi)
+            reversed_path[idx]["dir"] = new_dir
+
+        # 第一个点没有前一点来计算方向，可以保持原方向或根据需要设定
+        # 例如将第一个点的dir与第二个点相同：
+        if len(reversed_path) > 1:
+            reversed_path[0]["dir"] = reversed_path[1]["dir"]
+
         result = {
             "target": {"x": target_x, "y": target_y},
             "path": reversed_path
         }
         results.append(result)
-
-        if (i+1) % 1000 == 0:
-            print(f"Generated {i+1} paths...")
 
     # 保存到文件
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -211,7 +205,7 @@ if __name__ == "__main__":
         os.makedirs("example_data")
     
     # # 生成路径数据
-    # generate_path(virt_polygon, num_paths=128, output_file="example_data/paths_example_0.json")
+    generate_path(virt_polygon, num_paths=1, output_file="example_data/paths_example_0.json")
     
     # 可视化生成的路径
     with open("example_data/paths_example_0.json", 'r', encoding='utf-8') as f:

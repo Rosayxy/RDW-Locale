@@ -5,6 +5,7 @@ import json
 import random
 from shapely.geometry import Polygon, Point, LineString
 import math
+from shapely.ops import unary_union
 
 class RedirectWalkingEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -34,10 +35,10 @@ class RedirectWalkingEnv(gym.Env):
         print("boundary_phys valid:", self.boundary_phys.is_valid)
 
         # Load virtual obstacles
-        self.obstacles_virt = []
+        self.obstacles_phys = []
         for obs in env_config["obstacles_phys"]:
-            self.obstacles_virt.append(Polygon([(p["x"], p["y"]) for p in obs]))
-            print("obstacle_virt valid:", self.obstacles_virt[-1].is_valid)
+            self.obstacles_phys.append(Polygon([(p["x"], p["y"]) for p in obs]))
+            print("obstacle_virt valid:", self.obstacles_phys[-1].is_valid)
 
         # Initialize state buffer
         self.state_buffer = np.zeros((self.stack_num, self.state_dim), dtype=np.float32)
@@ -155,7 +156,7 @@ class RedirectWalkingEnv(gym.Env):
         """
         if not self.boundary_phys.contains(Point(pos)):
             return False
-        for obs in self.obstacles_virt:
+        for obs in self.obstacles_phys:
             if obs.contains(Point(pos)):
                 return False
         return True
@@ -173,37 +174,49 @@ class RedirectWalkingEnv(gym.Env):
         return state[:self.state_dim]
 
     def _ray_dist_to_boundary(self, pos, phi, max_dist=1000.0):
+        """
+        计算点 pos 沿角度 phi 的光线，与环境边界和障碍物的最短距离。
+        """
         start_x, start_y = pos
         end_x = start_x + max_dist * math.cos(phi)
         end_y = start_y + max_dist * math.sin(phi)
         ray = LineString([(start_x, start_y), (end_x, end_y)])
-        intersection = self.boundary_phys.intersection(ray)
 
-        if intersection.is_empty:
-            return max_dist
+        # 计算光线与边界的最短距离
 
-        # 根据geometry类型分别处理
-        if intersection.geom_type == 'Point':
-            # 单一点交点
-            return intersection.distance(Point(start_x, start_y))
-        elif intersection.geom_type == 'MultiPoint':
-            # 多点集合，取最近距离
-            return min(pt.distance(Point(start_x, start_y)) for pt in intersection.geoms)
-        elif intersection.geom_type == 'LineString':
-            # 若为LineString，与起点距离即为ray从start到该线段的最短距离
-            return intersection.distance(Point(start_x, start_y))
+        boundary_intersection = self.boundary_phys.intersection(ray)
+        boundary_distance = max_dist
+        if not boundary_intersection.is_empty:
+            if boundary_intersection.geom_type == 'Point':
+                boundary_distance = boundary_intersection.distance(Point(start_x, start_y))
+            elif boundary_intersection.geom_type == 'MultiPoint':
+                boundary_distance = min(
+                    pt.distance(Point(start_x, start_y)) for pt in boundary_intersection.geoms
+                )
+            elif boundary_intersection.geom_type == 'LineString':
+                boundary_distance = boundary_intersection.length
+                
+
+        # 计算光线与每个障碍物的最短距离
+        obstacle_distances = []
+        for obstacle in self.obstacles_phys:
+            obstacle_intersection = obstacle.boundary.intersection(ray)
+            if not obstacle_intersection.is_empty:
+                if obstacle_intersection.geom_type == 'Point':
+                    obstacle_distances.append(obstacle_intersection.distance(Point(start_x, start_y)))
+                elif obstacle_intersection.geom_type == 'MultiPoint':
+                    obstacle_distances.append(
+                        min(pt.distance(Point(start_x, start_y)) for pt in obstacle_intersection.geoms)
+                    )
+                elif obstacle_intersection.geom_type == 'LineString':
+                    obstacle_distances.append(obstacle_intersection.length)
+
+        # 取边界距离和障碍物距离的最小值
+        if obstacle_distances:
+            min_obstacle_distance = min(obstacle_distances)
+            return min(boundary_distance, min_obstacle_distance)
         else:
-            # 如果有其他类型，例如Polygon或MultiLineString，根据实际情况处理
-            # 尝试提取边界点或转换为点集合来求最近距离
-            # 一个简化的处理是获取intersection的边界（boundary）或转换为点
-            boundary = intersection.boundary
-            if boundary.geom_type == 'MultiPoint':
-                return min(pt.distance(Point(start_x, start_y)) for pt in boundary.geoms)
-            elif boundary.geom_type == 'Point':
-                return boundary.distance(Point(start_x, start_y))
-            else:
-                # fallback方案：直接返回max_dist或对boundary再次处理
-                return max_dist
+            return boundary_distance
 
 
     def _compute_reward(self, if_turn):
@@ -224,11 +237,11 @@ class RedirectWalkingEnv(gym.Env):
 
         vec_v = self.target_position_vir - self.virtual_position
         phi_target_v = math.atan2(vec_v[1], vec_v[0])
-        theta_v = (phi_target_v - self.virtual_orientation + math.pi) % (2 * math.pi) - math.pi
+        theta_v = (phi_target_v - self.virtual_orientation + 2*math.pi) % (2 * math.pi)
 
         vec_p = self.target_position_phys - self.physical_position
         phi_target_p = math.atan2(vec_p[1], vec_p[0])
-        theta_p = (phi_target_p - self.physical_orientation + math.pi) % (2 * math.pi) - math.pi
+        theta_p = (phi_target_p - self.physical_orientation + 2*math.pi) % (2 * math.pi)
 
         R_d = -abs(d_v - d_p)
         R_o = -abs(theta_v - theta_p)
