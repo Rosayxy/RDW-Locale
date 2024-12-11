@@ -7,6 +7,7 @@ from utils import compute_gae
 import json    
 import matplotlib.pyplot as plt
 import time
+from tqdm import tqdm
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -25,10 +26,10 @@ def main():
     net = PolicyValueNet(state_dim, action_dim)
     agent = PPO(net, lr=3e-4, gamma=0.99, lam=0.95, clip_range=0.1, ent_coef=0.001,device=device)
     
-    max_episodes = 10
+    max_episodes = 100
     episode_rewards = []
     print("Net init time:", time.time() - start_time)
-    for ep in range(max_episodes):
+    for ep in tqdm(range(max_episodes)):
         start_time = time.time()
         # Rollout buffer
         states = []
@@ -42,9 +43,20 @@ def main():
         print("Env reset time:", time.time() - start_time)
         start_time = time.time()
         done = False
+        K_random = 0
+        K_flag = 0
+        old_action,old_log_prob,old_value,old_raw_action = None,None,None,None
         while not done:
             state_t = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-            action, log_prob, value, raw_action = agent.get_action(state_t)
+            if K_flag == K_random or len(states) == 0: # first time or K times for smooth the trajectory
+                action, log_prob, value, raw_action = agent.get_action(state_t)
+                old_action,old_log_prob,old_value,old_raw_action = action,log_prob,value,raw_action
+                K_random = np.random.randint(5,15)
+                K_flag = 0
+            else:
+                action, log_prob, value, raw_action = old_action,old_log_prob,old_value,old_raw_action
+                K_flag += 1
+                
             action = action.squeeze(0).numpy()
             
             next_state, reward, done, info = env.step(action)

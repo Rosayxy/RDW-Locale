@@ -80,6 +80,8 @@ class RedirectWalkingEnv(gym.Env):
         initial_state = self._get_current_state()
         for i in range(self.stack_num):
             self.state_buffer[i] = initial_state
+            
+        print(len(self.current_path["path"]))
 
         return self.state_buffer.flatten()
 
