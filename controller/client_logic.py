@@ -5,7 +5,7 @@ import math
 # define target globally
 target_x = None
 target_y = None
-method = "s2c_wzx"
+method = "s2o"
 STEP_SIZE = 1
 STEP_NUM = 1
 # todo refactor calc_gain to switch case
@@ -18,6 +18,8 @@ def calc_gain(user : UserInfo, physical_space : Space, delta : float):
         return calc_gain_apf(user, physical_space, delta)
     elif method == "s2c_wzx":
         return calc_gain_s2c_wzx(user, physical_space, delta)
+    elif method == "s2o":
+        return calc_gain_s2o(user, physical_space, delta)
 
 def update_reset(user : UserInfo, physical_space : Space, delta : float):
     if method == "s2c":
@@ -27,6 +29,8 @@ def update_reset(user : UserInfo, physical_space : Space, delta : float):
     elif method == "apf":
         return update_reset_SFR2G(user, physical_space, delta)
     elif method == "s2c_wzx":
+        return update_reset_base(user, physical_space, delta)
+    elif method == "s2o":
         return update_reset_base(user, physical_space, delta)
 def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
     """
@@ -286,3 +290,77 @@ def calc_gain_s2c_wzx(user: UserInfo, physical_space: Space, delta: float, impro
     rot_gain = 1.0    # No adjustment to rotation speed
 
     return trans_gain, rot_gain, curvature_radius, direction
+
+def calc_gain_s2o(user: UserInfo, physical_space: Space, delta: float, orbit_radius=5.0):
+    orbit_radius = orbit_radius * 40 # Convert meters to pixels
+    border_polygon = Polygon(physical_space.border)
+    center_point = border_polygon.centroid
+
+    user_pos = np.array([user.x, user.y])
+    user_heading = np.array([math.cos(user.angle), math.sin(user.angle)])
+
+    vec_center_to_user = user_pos - np.array([center_point.x, center_point.y])
+    dist_to_center = np.linalg.norm(vec_center_to_user)
+
+    if dist_to_center == 0:
+        return 1.0, 1.0, INF_CUR_GAIN_R, 1
+
+    # calculate the angle between user heading and vector from center to user
+    angle_center_to_user = math.atan2(vec_center_to_user[1], vec_center_to_user[0])
+
+    if dist_to_center > orbit_radius:
+        # if user is outside the orbit, calculate the two tangent points
+        R = orbit_radius
+        d = dist_to_center
+        alpha = math.acos(R / d)
+        angle_t1 = angle_center_to_user + alpha
+        angle_t2 = angle_center_to_user - alpha
+        candidate1 = np.array([center_point.x + R*math.cos(angle_t1),
+                               center_point.y + R*math.sin(angle_t1)])
+        candidate2 = np.array([center_point.x + R*math.cos(angle_t2),
+                               center_point.y + R*math.sin(angle_t2)])
+    else:
+        offset = math.radians(60)
+        angle_t1 = angle_center_to_user + offset
+        angle_t2 = angle_center_to_user - offset
+
+        R = orbit_radius
+        candidate1 = np.array([center_point.x + R*math.cos(angle_t1),
+                               center_point.y + R*math.sin(angle_t1)])
+        candidate2 = np.array([center_point.x + R*math.cos(angle_t2),
+                               center_point.y + R*math.sin(angle_t2)])
+
+    # choose the candidate point that user is heading towards
+    def angle_to_point(target_point):
+        to_target_vec = target_point - user_pos
+        dist_to_target = np.linalg.norm(to_target_vec)
+        if dist_to_target == 0:
+            return 0.0, 1 
+        to_target_dir = to_target_vec / dist_to_target
+        dot_product = np.dot(user_heading, to_target_dir)
+        dot_product = np.clip(dot_product, -1.0, 1.0)
+        angle = math.acos(dot_product)
+        cross_product = np.cross(user_heading, to_target_dir)
+        direction = 1 if cross_product > 0 else -1
+        return angle, direction
+
+    angle1, dir1 = angle_to_point(candidate1)
+    angle2, dir2 = angle_to_point(candidate2)
+
+ 
+    if angle1 < angle2:
+        steering_point = candidate1
+        final_dir = dir1
+    elif angle2 < angle1:
+        steering_point = candidate2
+        final_dir = dir2
+    else:
+        steering_point = candidate1
+        final_dir = dir1
+
+    curvature_radius = MIN_CUR_GAIN_R
+
+    trans_gain = 1.0
+    rot_gain = 1.0
+
+    return trans_gain, rot_gain, curvature_radius, final_dir
