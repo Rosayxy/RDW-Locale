@@ -5,7 +5,7 @@ import math
 # define target globally
 target_x = None
 target_y = None
-method = "s2o"
+method = "apf"
 STEP_SIZE = 1
 STEP_NUM = 1
 # todo refactor calc_gain to switch case
@@ -42,16 +42,17 @@ def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
     angle = math.atan2(center_y - user.y, center_x - user.x)
     angle_diff = angle - user.angle
     angle_diff = math.atan2(math.sin(angle_diff), math.cos(angle_diff)) # normalization
+    tmp_radius = 160
     # judge whether change target or not
     if abs(angle_diff)>math.pi*8/9:
         # generate new target 90 degrees from the current user angle and 4 meters away from user, with the direction close to center
-        target_x = user.x + 400 * math.cos(user.angle + math.pi/2)
-        target_y = user.y + 400 * math.sin(user.angle + math.pi/2)
+        target_x = user.x + tmp_radius * math.cos(user.angle + math.pi/2)
+        target_y = user.y + tmp_radius * math.sin(user.angle + math.pi/2)
         # judge whether the target makes the user closer to the center  
         if (target_x - user.x) * (-user.x + center_x) + (target_y - user.y) * (-user.y + center_y) < 0:
             # if not, change the direction
-            target_x = user.x + 400 * math.cos(user.angle - math.pi/2)
-            target_y = user.y + 400 * math.sin(user.angle - math.pi/2)
+            target_x = user.x + tmp_radius * math.cos(user.angle - math.pi/2)
+            target_y = user.y + tmp_radius * math.sin(user.angle - math.pi/2)
     else:
         target_x = center_x
         target_y = center_y
@@ -85,7 +86,7 @@ def calc_gain_s2mt(user : UserInfo, physical_space : Space, delta : float):
     Return three gains (平移增益、旋转增益、曲率增益半径) and the direction (+1 (clockwise) or -1 (counter clockwise)) when cur_gain used. Implement your own logic here.
     """
     center_x, center_y = physical_space.get_center()
-    radius = 500
+    radius = 200
     targets = [
         (center_x + radius, center_y),  # Target 1
         (center_x - radius / 2, center_y + math.sqrt(3) * radius / 2),  # Target 2
