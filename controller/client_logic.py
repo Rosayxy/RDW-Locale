@@ -396,14 +396,18 @@ def calc_gain_arc(user: UserInfo,physical_space: Space, delta: float):
     radius = INF_CUR_GAIN_R
     if misalign_left < misalign_right: # steer to the right, so it is clockwise
         direction = 1
-        if misalign_right < 1:
-            radius = min(MIN_CUR_GAIN_R/misalign_right+0.001,radius)
+        if abs(misalign_right) < 1:
+            radius = max(MIN_CUR_GAIN_R/(abs(misalign_right)+0.001),radius)
+        if radius > INF_CUR_GAIN_R:
+            radius = INF_CUR_GAIN_R
         else:
             radius = MIN_CUR_GAIN_R
     elif misalign_left > misalign_right: # steer to the left, so it is counter clockwise
         direction = -1
-        if misalign_left < 1:
-            radius = min(MIN_CUR_GAIN_R/misalign_left,radius)
+        if abs(misalign_left) < 1:
+            radius = max(MIN_CUR_GAIN_R/(abs(misalign_left)+0.001),radius)
+        if radius > INF_CUR_GAIN_R:
+            radius = INF_CUR_GAIN_R
         else:
             radius = MIN_CUR_GAIN_R
     
@@ -430,7 +434,6 @@ def update_reset_arc(user : UserInfo, physical_space : Space, delta : float):
     normal = physical_space.get_normal_at_rst((user.x,user.y)) # a 2D np array
     dist_virt = physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True)
     dist_phys_list = []
-    print("dist virt at reset",dist_virt)
     for i in range(20):
         dist_phys = physical_space.get_dist_arc((user.x,user.y),user.angle+math.pi*i/10+math.pi,False)
         if normal[0]*math.cos(user.angle+math.pi*i/10+math.pi)+normal[1]*math.sin(user.angle+math.pi*i/10+math.pi) > 0:

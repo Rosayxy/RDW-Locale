@@ -199,11 +199,11 @@ class Space:
         # left misalign
         left_phy_dist = self.get_dist_arc(physical_point, physical_angle - math.pi/2)
         left_virt_dist = self.get_dist_arc(virtual_point, virtual_angle - math.pi/2,True)
-        left_misalign = abs(left_phy_dist - left_virt_dist)
+        left_misalign = (left_phy_dist - left_virt_dist)/left_virt_dist
         # right misalign
         right_phy_dist = self.get_dist_arc(physical_point, physical_angle + math.pi/2)
         right_virt_dist = self.get_dist_arc(virtual_point, virtual_angle + math.pi/2,True)
-        right_misalign = abs(right_phy_dist - right_virt_dist)
+        right_misalign = (right_phy_dist - right_virt_dist)/right_virt_dist
         return left_misalign, right_misalign
     
 
