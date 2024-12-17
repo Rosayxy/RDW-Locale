@@ -1,13 +1,46 @@
 from utils.constants import *
 from utils.space import *
+# from model import Policy
+import torch
+from gym.spaces.box import Box
 import math
 # todo 思考怎么对待那个 temporary target
 # define target globally
 target_x = None
 target_y = None
-method = "s2o"
+method = "srl"
 STEP_SIZE = 1
 STEP_NUM = 1
+
+actor_critic = None
+
+current_obs = None
+
+def get_model():
+    global actor_critic
+    if actor_critic is None:
+        actor_critic = torch.load("C:/Users/14345/Desktop/2024autumn/VR/final_code/RDW-Locale/controller/model/6102.pth")
+    return actor_critic
+
+class FixedNormal(torch.distributions.Normal):
+    def log_probs(self, actions):
+        return super().log_prob(actions).sum(-1, keepdim=True)
+
+    def entrop(self):
+        return super.entropy().sum(-1)
+
+    def mode(self):
+        return self.mean
+    
+def split(action):
+    a, b, c = action[0]
+    a = 1.060 + 0.2   * a
+    b = 1.145 + 0.345 * b
+    c = 300/c
+    a = torch.clamp(a, MIN_TRANS_GAIN, MAX_TRANS_GAIN)
+    b = torch.clamp(b, MIN_ROT_GAIN, MAX_ROT_GAIN)
+    return a, b, c
+
 # todo refactor calc_gain to switch case
 def calc_gain(user : UserInfo, physical_space : Space, delta : float):
     if method == "s2c":
@@ -20,6 +53,8 @@ def calc_gain(user : UserInfo, physical_space : Space, delta : float):
         return calc_gain_s2c_wzx(user, physical_space, delta)
     elif method == "s2o":
         return calc_gain_s2o(user, physical_space, delta)
+    elif method == "srl":
+        return calc_gain_srl(user, physical_space, delta)
 
 def update_reset(user : UserInfo, physical_space : Space, delta : float):
     if method == "s2c":
@@ -32,6 +67,9 @@ def update_reset(user : UserInfo, physical_space : Space, delta : float):
         return update_reset_base(user, physical_space, delta)
     elif method == "s2o":
         return update_reset_base(user, physical_space, delta)
+    elif method == "srl":
+        return update_reset_base(user, physical_space, delta)
+    
 def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
     """
     Return three gains (平移增益、旋转增益、曲率增益半径) and the direction (+1 (clockwise) or -1 (counter clockwise)) when cur_gain used. Implement your own logic here.
@@ -364,3 +402,30 @@ def calc_gain_s2o(user: UserInfo, physical_space: Space, delta: float, orbit_rad
     rot_gain = 1.0
 
     return trans_gain, rot_gain, curvature_radius, final_dir
+
+def calc_gain_srl(user: UserInfo, physical_space: Space, delta: float):
+    actor_critic = get_model()
+    height ,width = physical_space.border[1][0],physical_space.border[1][1]
+    # angel to -pi~pi
+    if user.angle > np.pi:
+        user.angle = user.angle - 2*np.pi
+    this_obs = [user.x /height ,user.y / width,(user.angle+np.pi)%(2*np.pi)/(2*np.pi)]
+    global current_obs
+    state_tensor = None
+ 
+    current_obs = []
+    current_obs.extend(10*this_obs)
+    state_tensor = torch.Tensor(current_obs)
+
+    values, action_mean, action_log_std = actor_critic.act(
+                    torch.Tensor(state_tensor).unsqueeze(0))
+    dist = FixedNormal(action_mean, action_log_std)
+    action = dist.mode()
+    gt, gr, gc = split(action)
+    direction = 1 if gc > 0 else -1
+    gc = abs(gc)
+    # turn to numpy
+    gt = gt.item()
+    gr = gr.item()
+    gc = gc.item()
+    return gt, gr, gc, direction

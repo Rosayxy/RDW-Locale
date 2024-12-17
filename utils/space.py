@@ -8,12 +8,15 @@ class UserInfo:
     """
     The representation of the user (position, angle, velocity and angular velocity).
     """
-    def __init__(self, x, y, angle, v, w):
+    def __init__(self, x, y, angle, v, w,vir_x,vir_y,vir_angel):
         self.x = x
         self.y = y
         self.angle = angle
         self.v = v
         self.w = w
+        self.vir_x = vir_x
+        self.vir_y = vir_y
+        self.vir_angel = vir_angel
 
 class Space:
     """
