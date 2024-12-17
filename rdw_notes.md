@@ -35,3 +35,16 @@ Potential function 如下:
 
 reset   
 SFR2G 是最强的方案 我们就实现它吧 大概想法 belike 每次沿着梯度下降的方向采取若干小步 然后返回
+
+## ARC
+In this paper, we are concerned with steering users on collision-free paths in the PE and VE at the same time.     
+With traditional RDW controllers, the goal of the system is to steer the user away from obstacles in the PE.With analignment-based controller, the goal is to steer the user to a physical state that most  closely matches the virtual state.    
+def A(Qt) = dist(qt_phys,qt_virt) if A(Qt) == 0 then apply no redirection     
+translation gain gt = clamp(d(phys,theta_phys)/d(virt,theta_virt), minTransgain, maxTransgain)   
+curvature gain 如下: 
+![alt text](image-2.png)
+其中方向由左右的偏差决定   
+具体的 curvature gain radius 怎么算，其中半径上下界分别是 +inf 和 7.5 m，然后我们想取到的值是 (1/misalign_left)*7.5 m if misalign_left < 1 else 7.5 m     
+rotation gain 如下：
+
+![alt text](image-3.png)        

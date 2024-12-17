@@ -41,6 +41,7 @@ def split(action):
     b = torch.clamp(b, MIN_ROT_GAIN, MAX_ROT_GAIN)
     return a, b, c
 
+prev_frame_UserInfo = None
 # todo refactor calc_gain to switch case
 def calc_gain(user : UserInfo, physical_space : Space, delta : float):
     if method == "s2c":
@@ -55,6 +56,8 @@ def calc_gain(user : UserInfo, physical_space : Space, delta : float):
         return calc_gain_s2o(user, physical_space, delta)
     elif method == "srl":
         return calc_gain_srl(user, physical_space, delta)
+    elif method == "arc":
+        return calc_gain_arc(user, physical_space, delta)
 
 def update_reset(user : UserInfo, physical_space : Space, delta : float):
     if method == "s2c":
@@ -70,6 +73,9 @@ def update_reset(user : UserInfo, physical_space : Space, delta : float):
     elif method == "srl":
         return update_reset_base(user, physical_space, delta)
     
+    elif method == "arc":
+        return update_reset_arc(user, physical_space, delta)
+    
 def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
     """
     Return three gains (平移增益、旋转增益、曲率增益半径) and the direction (+1 (clockwise) or -1 (counter clockwise)) when cur_gain used. Implement your own logic here.
@@ -80,16 +86,17 @@ def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
     angle = math.atan2(center_y - user.y, center_x - user.x)
     angle_diff = angle - user.angle
     angle_diff = math.atan2(math.sin(angle_diff), math.cos(angle_diff)) # normalization
+    tmp_radius = 160
     # judge whether change target or not
     if abs(angle_diff)>math.pi*8/9:
         # generate new target 90 degrees from the current user angle and 4 meters away from user, with the direction close to center
-        target_x = user.x + 400 * math.cos(user.angle + math.pi/2)
-        target_y = user.y + 400 * math.sin(user.angle + math.pi/2)
+        target_x = user.x + tmp_radius * math.cos(user.angle + math.pi/2)
+        target_y = user.y + tmp_radius * math.sin(user.angle + math.pi/2)
         # judge whether the target makes the user closer to the center  
         if (target_x - user.x) * (-user.x + center_x) + (target_y - user.y) * (-user.y + center_y) < 0:
             # if not, change the direction
-            target_x = user.x + 400 * math.cos(user.angle - math.pi/2)
-            target_y = user.y + 400 * math.sin(user.angle - math.pi/2)
+            target_x = user.x + tmp_radius * math.cos(user.angle - math.pi/2)
+            target_y = user.y + tmp_radius * math.sin(user.angle - math.pi/2)
     else:
         target_x = center_x
         target_y = center_y
@@ -123,7 +130,7 @@ def calc_gain_s2mt(user : UserInfo, physical_space : Space, delta : float):
     Return three gains (平移增益、旋转增益、曲率增益半径) and the direction (+1 (clockwise) or -1 (counter clockwise)) when cur_gain used. Implement your own logic here.
     """
     center_x, center_y = physical_space.get_center()
-    radius = 500
+    radius = 200
     targets = [
         (center_x + radius, center_y),  # Target 1
         (center_x - radius / 2, center_y + math.sqrt(3) * radius / 2),  # Target 2
@@ -429,3 +436,81 @@ def calc_gain_srl(user: UserInfo, physical_space: Space, delta: float):
     gr = gr.item()
     gc = gc.item()
     return gt, gr, gc, direction
+def calc_gain_arc(user: UserInfo,physical_space: Space, delta: float):
+    """
+    Return three gains (平移增益、旋转增益、曲率增益半径) and the direction (+1 (clockwise) or -1 (counter clockwise)) when cur_gain used. Implement your own logic here.
+    """
+    global prev_frame_UserInfo
+    print("calc gain arc")
+    print(physical_space.get_dist_arc((user.x,user.y),user.angle),physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True),physical_space.get_dist_arc((user.x,user.y),user.angle)/physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True))
+    translation_gain = physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True)/physical_space.get_dist_arc((user.x,user.y),user.angle)
+    if translation_gain>MAX_TRANS_GAIN:
+        translation_gain = MAX_TRANS_GAIN
+    if translation_gain < MIN_TRANS_GAIN:
+        translation_gain = MIN_TRANS_GAIN
+        
+    a_qt = physical_space.get_a_qt((user.x,user.y),user.angle,(user.virtual_x,user.virtual_y),user.virtual_angle)
+    
+    if a_qt == 0:
+        prev_frame_UserInfo = user
+        return 1,1,INF_CUR_GAIN_R,1
+    
+    # radius gain
+    misalign_left, misalign_right = physical_space.get_misalign((user.x,user.y),user.angle,(user.virtual_x,user.virtual_y),user.virtual_angle)
+    direction = 1
+    radius = INF_CUR_GAIN_R
+    if misalign_left < misalign_right: # steer to the right, so it is clockwise
+        direction = 1
+        if abs(misalign_right) < 1:
+            radius = max(MIN_CUR_GAIN_R/(abs(misalign_right)+0.001),radius)
+        if radius > INF_CUR_GAIN_R:
+            radius = INF_CUR_GAIN_R
+        else:
+            radius = MIN_CUR_GAIN_R
+    elif misalign_left > misalign_right: # steer to the left, so it is counter clockwise
+        direction = -1
+        if abs(misalign_left) < 1:
+            radius = max(MIN_CUR_GAIN_R/(abs(misalign_left)+0.001),radius)
+        if radius > INF_CUR_GAIN_R:
+            radius = INF_CUR_GAIN_R
+        else:
+            radius = MIN_CUR_GAIN_R
+    
+    # rotation gain
+    rotation_gain = 1
+    if prev_frame_UserInfo is None:
+        prev_frame_UserInfo = user
+    else:
+        prev_a_qt = physical_space.get_a_qt((prev_frame_UserInfo.x,prev_frame_UserInfo.y),prev_frame_UserInfo.angle,(prev_frame_UserInfo.virtual_x,prev_frame_UserInfo.virtual_y),prev_frame_UserInfo.virtual_angle)
+        if prev_a_qt > a_qt:
+            rotation_gain = MIN_ROT_GAIN
+        elif prev_a_qt < a_qt:
+            rotation_gain = MAX_ROT_GAIN
+        else:
+            rotation_gain = 1
+        prev_frame_UserInfo = user
+    
+    return translation_gain,rotation_gain,radius,direction
+    
+def update_reset_arc(user : UserInfo, physical_space : Space, delta : float):
+    """
+    Return new UserInfo when RESET. Implement your RESET logic here.
+    """
+    normal = physical_space.get_normal_at_rst((user.x,user.y)) # a 2D np array
+    dist_virt = physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True)
+    dist_phys_list = []
+    for i in range(20):
+        dist_phys = physical_space.get_dist_arc((user.x,user.y),user.angle+math.pi*i/10+math.pi,False)
+        if normal[0]*math.cos(user.angle+math.pi*i/10+math.pi)+normal[1]*math.sin(user.angle+math.pi*i/10+math.pi) > 0:
+            dist_phys_list.append((user.angle + math.pi + math.pi*i/10,dist_phys))
+            if dist_phys > dist_virt:
+                print("dist_phys",dist_phys,"dist_virt",dist_virt)
+                user.angle = user.angle + math.pi + math.pi*i/10
+                return user
+    print("dist_phys_list",dist_phys_list)
+    for i in dist_phys_list:
+        # get the angle of the element which the corresponding dist_phys is the largest
+        if i[1] == max(dist_phys_list,key=lambda x:x[1])[1]:
+            user.angle = i[0]
+            return user
+    return None
