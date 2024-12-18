@@ -6,3 +6,4 @@ EasyRDW.md
 *.json
 *.pth
 *.png
+*.npy

@@ -8,7 +8,6 @@ import math
 # define target globally
 target_x = None
 target_y = None
-method = "srl"
 STEP_SIZE = 1
 STEP_NUM = 1
 
@@ -43,7 +42,7 @@ def split(action):
 
 prev_frame_UserInfo = None
 # todo refactor calc_gain to switch case
-def calc_gain(user : UserInfo, physical_space : Space, delta : float):
+def calc_gain(user : UserInfo, physical_space : Space, delta : float, method = "s2c"):
     if method == "s2c":
         return calc_gain_s2c(user, physical_space, delta)
     elif method == "s2mt":
@@ -58,8 +57,10 @@ def calc_gain(user : UserInfo, physical_space : Space, delta : float):
         return calc_gain_srl(user, physical_space, delta)
     elif method == "arc":
         return calc_gain_arc(user, physical_space, delta)
+    elif method == "none":
+        return 1, 1, INF_CUR_GAIN_R, 1
 
-def update_reset(user : UserInfo, physical_space : Space, delta : float):
+def update_reset(user : UserInfo, physical_space : Space, delta : float, method = "s2c"):
     if method == "s2c":
         return update_reset_base(user, physical_space, delta)
     elif method == "s2mt":
@@ -72,9 +73,10 @@ def update_reset(user : UserInfo, physical_space : Space, delta : float):
         return update_reset_base(user, physical_space, delta)
     elif method == "srl":
         return update_reset_base(user, physical_space, delta)
-    
     elif method == "arc":
         return update_reset_arc(user, physical_space, delta)
+    elif method == "none":
+        return update_reset_base(user, physical_space, delta)
     
 def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
     """
@@ -236,14 +238,14 @@ def update_reset_SFR2G(user : UserInfo, physical_space : Space, delta : float):
         # calculate the x and y component of the force using centered finite difference method
         x_force = (- physical_space.get_apf_val((user.x + 2, user.y)) + physical_space.get_apf_val((user.x - 2, user.y))) / 4
         y_force = (-physical_space.get_apf_val((user.x, user.y + 2)) + physical_space.get_apf_val((user.x, user.y - 2))) / 4
-        print("val",val,"x_force_1",physical_space.get_apf_val((user.x + 2, user.y)),"x_force_2",physical_space.get_apf_val((user.x-2,user.y)),"yforce 1",physical_space.get_apf_val((user.x,user.y+2)),"yforce 2",physical_space.get_apf_val((user.x,user.y - 2)),"y force",y_force)
+        # print("val",val,"x_force_1",physical_space.get_apf_val((user.x + 2, user.y)),"x_force_2",physical_space.get_apf_val((user.x-2,user.y)),"yforce 1",physical_space.get_apf_val((user.x,user.y+2)),"yforce 2",physical_space.get_apf_val((user.x,user.y - 2)),"y force",y_force)
         # calculate the angle of the force
         angle = math.atan2(y_force, x_force)
         # calculate the new position
         user.x += STEP_SIZE * math.cos(angle)
         user.y += STEP_SIZE * math.sin(angle)
         user.angle = angle
-        print("in updating reset, user x is ", user.x, "user y is ", user.y,"user angle is",user.angle,"x force is ", x_force, "y force is ", y_force)
+        #print("in updating reset, user x is ", user.x, "user y is ", user.y,"user angle is",user.angle,"x force is ", x_force, "y force is ", y_force)
     return user
     
     
@@ -413,16 +415,20 @@ def calc_gain_s2o(user: UserInfo, physical_space: Space, delta: float, orbit_rad
 def calc_gain_srl(user: UserInfo, physical_space: Space, delta: float):
     actor_critic = get_model()
     height ,width = physical_space.border[1][0],physical_space.border[1][1]
-    # angel to -pi~pi
+    # angle to -pi~pi
     if user.angle > np.pi:
         user.angle = user.angle - 2*np.pi
     this_obs = [user.x /height ,user.y / width,(user.angle+np.pi)%(2*np.pi)/(2*np.pi)]
     global current_obs
     state_tensor = None
- 
-    current_obs = []
-    current_obs.extend(10*this_obs)
-    state_tensor = torch.Tensor(current_obs)
+    if current_obs is None:
+        current_obs = []
+        current_obs.extend(10*this_obs)
+        state_tensor = torch.Tensor(current_obs)
+    else:
+        current_obs = current_obs[3:]
+        current_obs.extend(this_obs)
+        state_tensor = torch.Tensor(current_obs)
 
     values, action_mean, action_log_std = actor_critic.act(
                     torch.Tensor(state_tensor).unsqueeze(0))
@@ -436,27 +442,28 @@ def calc_gain_srl(user: UserInfo, physical_space: Space, delta: float):
     gr = gr.item()
     gc = gc.item()
     return gt, gr, gc, direction
+
 def calc_gain_arc(user: UserInfo,physical_space: Space, delta: float):
     """
     Return three gains (平移增益、旋转增益、曲率增益半径) and the direction (+1 (clockwise) or -1 (counter clockwise)) when cur_gain used. Implement your own logic here.
     """
     global prev_frame_UserInfo
-    print("calc gain arc")
-    print(physical_space.get_dist_arc((user.x,user.y),user.angle),physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True),physical_space.get_dist_arc((user.x,user.y),user.angle)/physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True))
-    translation_gain = physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True)/physical_space.get_dist_arc((user.x,user.y),user.angle)
+    # print("calc gain arc")
+    # print(physical_space.get_dist_arc((user.x,user.y),user.angle),physical_space.get_dist_arc((user.vir_x,user.vir_y),user.vir_angle,True),physical_space.get_dist_arc((user.x,user.y),user.angle)/physical_space.get_dist_arc((user.vir_x,user.vir_y),user.vir_angle,True))
+    translation_gain = physical_space.get_dist_arc((user.vir_x,user.vir_y),user.vir_angle,True)/physical_space.get_dist_arc((user.x,user.y),user.angle)
     if translation_gain>MAX_TRANS_GAIN:
         translation_gain = MAX_TRANS_GAIN
     if translation_gain < MIN_TRANS_GAIN:
         translation_gain = MIN_TRANS_GAIN
         
-    a_qt = physical_space.get_a_qt((user.x,user.y),user.angle,(user.virtual_x,user.virtual_y),user.virtual_angle)
+    a_qt = physical_space.get_a_qt((user.x,user.y),user.angle,(user.vir_x,user.vir_y),user.vir_angle)
     
     if a_qt == 0:
         prev_frame_UserInfo = user
         return 1,1,INF_CUR_GAIN_R,1
     
     # radius gain
-    misalign_left, misalign_right = physical_space.get_misalign((user.x,user.y),user.angle,(user.virtual_x,user.virtual_y),user.virtual_angle)
+    misalign_left, misalign_right = physical_space.get_misalign((user.x,user.y),user.angle,(user.vir_x,user.vir_y),user.vir_angle)
     direction = 1
     radius = INF_CUR_GAIN_R
     if misalign_left < misalign_right: # steer to the right, so it is clockwise
@@ -481,7 +488,7 @@ def calc_gain_arc(user: UserInfo,physical_space: Space, delta: float):
     if prev_frame_UserInfo is None:
         prev_frame_UserInfo = user
     else:
-        prev_a_qt = physical_space.get_a_qt((prev_frame_UserInfo.x,prev_frame_UserInfo.y),prev_frame_UserInfo.angle,(prev_frame_UserInfo.virtual_x,prev_frame_UserInfo.virtual_y),prev_frame_UserInfo.virtual_angle)
+        prev_a_qt = physical_space.get_a_qt((prev_frame_UserInfo.x,prev_frame_UserInfo.y),prev_frame_UserInfo.angle,(prev_frame_UserInfo.vir_x,prev_frame_UserInfo.vir_y),prev_frame_UserInfo.vir_angle)
         if prev_a_qt > a_qt:
             rotation_gain = MIN_ROT_GAIN
         elif prev_a_qt < a_qt:
@@ -497,17 +504,17 @@ def update_reset_arc(user : UserInfo, physical_space : Space, delta : float):
     Return new UserInfo when RESET. Implement your RESET logic here.
     """
     normal = physical_space.get_normal_at_rst((user.x,user.y)) # a 2D np array
-    dist_virt = physical_space.get_dist_arc((user.virtual_x,user.virtual_y),user.virtual_angle,True)
+    dist_virt = physical_space.get_dist_arc((user.vir_x,user.vir_y),user.vir_angle,True)
     dist_phys_list = []
     for i in range(20):
         dist_phys = physical_space.get_dist_arc((user.x,user.y),user.angle+math.pi*i/10+math.pi,False)
         if normal[0]*math.cos(user.angle+math.pi*i/10+math.pi)+normal[1]*math.sin(user.angle+math.pi*i/10+math.pi) > 0:
             dist_phys_list.append((user.angle + math.pi + math.pi*i/10,dist_phys))
             if dist_phys > dist_virt:
-                print("dist_phys",dist_phys,"dist_virt",dist_virt)
+                #print("dist_phys",dist_phys,"dist_virt",dist_virt)
                 user.angle = user.angle + math.pi + math.pi*i/10
                 return user
-    print("dist_phys_list",dist_phys_list)
+    #print("dist_phys_list",dist_phys_list)
     for i in dist_phys_list:
         # get the angle of the element which the corresponding dist_phys is the largest
         if i[1] == max(dist_phys_list,key=lambda x:x[1])[1]:
