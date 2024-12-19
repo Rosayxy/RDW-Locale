@@ -162,8 +162,8 @@ def calc_gain_s2mt(user : UserInfo, physical_space : Space, delta : float):
     if user.w*direction < 0:
         rotation_gain = MIN_ROT_GAIN
     dist = math.sqrt((closest_target[0] - user.x) ** 2 + (closest_target[1] - user.y) ** 2)
-    if dist < 125:
-        curvature_gain_radius = MIN_CUR_GAIN_R*(2.5/(dist+1.25))
+    if dist < 50: # 1.25m
+        curvature_gain_radius = MIN_CUR_GAIN_R*(100/(dist+50))
         
     return translation_gain, rotation_gain, curvature_gain_radius, direction 
     
