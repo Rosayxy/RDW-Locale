@@ -113,8 +113,8 @@ def calc_gain_s2c(user : UserInfo, physical_space : Space, delta : float):
         rotation_gain = MIN_ROT_GAIN
     # calculate the rotation caused by curvature
 
-    if dist < 125:
-        curvature_gain_radius = MIN_CUR_GAIN_R*(2.5/(dist+1.25))
+    if dist < 50:
+        curvature_gain_radius = MIN_CUR_GAIN_R*(100/(dist+50))
     return translation_gain, rotation_gain, curvature_gain_radius, direction       
 
 def update_reset_base(user : UserInfo, physical_space : Space, delta : float):
