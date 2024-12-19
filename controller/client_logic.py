@@ -173,7 +173,7 @@ def update_reset_s2mt(user : UserInfo, physical_space : Space, delta : float):
     Turns towards the nearest target. This implementation has the drawback that the new direction might still be blocked by an obstacle.
     """
     center_x, center_y = physical_space.get_center()
-    radius = 500
+    radius = 200
     targets = [
         (center_x + radius, center_y),  # Target 1
         (center_x - radius / 2, center_y + math.sqrt(3) * radius / 2),  # Target 2
@@ -338,7 +338,7 @@ def calc_gain_s2c_wzx(user: UserInfo, physical_space: Space, delta: float, impro
 
     return trans_gain, rot_gain, curvature_radius, direction
 
-def calc_gain_s2o(user: UserInfo, physical_space: Space, delta: float, orbit_radius=5.0):
+def calc_gain_s2o(user: UserInfo, physical_space: Space, delta: float, orbit_radius=2.5):
     orbit_radius = orbit_radius * 40 # Convert meters to pixels
     border_polygon = Polygon(physical_space.border)
     center_point = border_polygon.centroid

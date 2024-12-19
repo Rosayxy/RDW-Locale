@@ -5,7 +5,7 @@ from matplotlib.patches import Polygon as MplPolygon
 from matplotlib.lines import Line2D
 from matplotlib.collections import LineCollection
 import os
-
+from tqdm import tqdm
 from utils.space import Space
 from utils.envs import PassiveHapticsEnv
 
@@ -131,7 +131,7 @@ def plot_fig(physical_space, s2c_x_l, s2c_y_l, s2o_x_l, s2o_y_l, srl_x_l, srl_y_
     ax.set_ylim(min(all_y) - margin, max(all_y) + margin)
 
     # Save the plot
-    output_dir = "./Plots/"
+    output_dir = "./Plots4/"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     plt.savefig(f'{output_dir}path_{path_index}.png', dpi=300, bbox_inches='tight')
@@ -140,7 +140,7 @@ def plot_fig(physical_space, s2c_x_l, s2c_y_l, s2o_x_l, s2o_y_l, srl_x_l, srl_y_
 
 def main():
     # Load configuration
-    config_path = "./utils/config.json"
+    config_path = "./utils/config3.json"
     with open(config_path, 'r') as f:
         config = json.load(f)
 
@@ -185,7 +185,7 @@ def main():
     none_collide_list = []
     
     # Process each path
-    for i in range(len(path[:10])):
+    for i in tqdm(range(len(path))):
         current_path = path[i].tolist()
         s2c_x_l, s2c_y_l, s2c_collide_num = env_s2c.step_specific_path(current_path)
         s2o_x_l, s2o_y_l, s2o_collide_num = env_s2o.step_specific_path(current_path)
@@ -207,7 +207,7 @@ def main():
         apf_collide_list.append(apf_collide_num)
         none_collide_list.append(none_collide_num)
 
-    print("All path plots have been saved to './Plots/' directory.")
+    print("All path plots have been saved to './Plots4/' directory.")
     
     # calculate the collision mean, std, and max, and save to a file
      # Calculate collision statistics
@@ -250,7 +250,7 @@ def main():
     }
 
     # Save collision data to JSON
-    collision_data_path = "./Plots/collision_data.json"
+    collision_data_path = "./Plots4/collision_data.json"
     with open(collision_data_path, 'w') as f:
         json.dump(collision_data, f, indent=4)
     print(f"Collision data has been saved to '{collision_data_path}'.")
