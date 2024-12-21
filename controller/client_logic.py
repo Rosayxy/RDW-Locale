@@ -472,16 +472,12 @@ def calc_gain_arc(user: UserInfo,physical_space: Space, delta: float):
             radius = max(MIN_CUR_GAIN_R/(abs(misalign_right)+0.001),radius)
         if radius > INF_CUR_GAIN_R:
             radius = INF_CUR_GAIN_R
-        else:
-            radius = MIN_CUR_GAIN_R
     elif misalign_left > misalign_right: # steer to the left, so it is counter clockwise
         direction = -1
         if abs(misalign_left) < 1:
             radius = max(MIN_CUR_GAIN_R/(abs(misalign_left)+0.001),radius)
         if radius > INF_CUR_GAIN_R:
             radius = INF_CUR_GAIN_R
-        else:
-            radius = MIN_CUR_GAIN_R
     
     # rotation gain
     rotation_gain = 1
