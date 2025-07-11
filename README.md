@@ -1,5 +1,10 @@
 # EasyRDW-Local
 
+如果你选修清华大学计算机系相关课程，并且正在做与本仓库相同的作业，请先自己实现后再参考。在课程允许参考的前提下，参考本仓库后，务必在 README 和代码注释中记录参考本仓库的内容
+
+该作业由仓库主和 hahahawzx@github 完成，总体得分 96 左右   
+请注意 rosa-dev 和 wzx-dev 合并起来有完整的功能，可以参考    
+
 EasyRDW 是一个轻量级的 RDW 算法测试框架，用户可以方便地在其上实现 RDW 方法，并即时看到自己算法的表现。
 
 [Easy RDW-Web](https://github.com/MoonstoneF/EasyRDW-Web)
